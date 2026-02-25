@@ -709,20 +709,9 @@ select.form-input option{background:#1a1a2e}
           <div class="participant-list" id="lobbyParticipantList" style="display:flex;flex-direction:column;gap:8px;max-height:260px;overflow-y:auto">
             <div style="font-size:13px;color:rgba(255,255,255,0.3);text-align:center;padding:20px;font-family:'Playfair Display',serif;font-style:italic">Waiting for participants to join…</div>
           </div>
-          <div style="margin-top:24px">
-            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
-              <span style="font-size:11px;letter-spacing:2px;color:rgba(255,255,255,0.5)">Submitted</span>
-              <span class="host-pct-label" id="lobbySubmitPct">0%</span>
-            </div>
-            <div class="host-progress-bar"><div class="host-progress-fill" id="lobbySubmitBar" style="width:0%"></div></div>
-            <p style="font-size:10px;color:rgba(255,255,255,0.3);letter-spacing:1px;margin-top:6px">Start enabled at ≥50% submitted</p>
-          </div>
-          <div style="margin-top:20px;display:flex;flex-direction:column;gap:10px">
-            <button class="btn btn-primary" id="startRoundBtn" onclick="hostStartRound()" style="width:100%;padding:16px;font-size:14px;letter-spacing:4px" disabled>
-              START RESONANCE ROUND
-            </button>
-            <button class="btn btn-secondary" onclick="hostForceStart()" style="font-size:10px;letter-spacing:2px">
-              Force Start Submissions (0 joined)
+          <div style="margin-top:20px">
+            <button class="btn btn-primary" id="startRoundBtn" onclick="hostStartRound()" style="width:100%;padding:16px;font-size:14px;letter-spacing:4px">
+              OPEN SUBMISSIONS
             </button>
           </div>
         </div>
@@ -1475,7 +1464,7 @@ async function createSession() {
 }
 
 // ─── HOST LOBBY ───────────────────────────────────────────────────────────────
-function loadHostLobby() {
+async function loadHostLobby() {
   const s = G.currentSession;
   document.getElementById('lobbySessionTitle').textContent = s.title.toUpperCase();
   document.getElementById('lobbyCode').textContent = s.code;
@@ -1483,9 +1472,11 @@ function loadHostLobby() {
   document.getElementById('lobbyStmtsPerP').textContent = s.statements_per_participant;
   document.getElementById('joinUrlDisplay').textContent = window.location.origin + '?join=' + s.code;
   drawQRCode(s.code);
-  updateLobbyParticipantList();
   showView('view-host-lobby');
   setNavPhase('● LOBBY');
+  // Always fetch fresh participant list before rendering
+  await refreshParticipants();
+  updateLobbyParticipantList();
 }
 
 function updateLobbyParticipantList() {
@@ -1508,21 +1499,6 @@ function updateLobbyParticipantList() {
     }).join('');
   }
 
-  // Submission % derived from statements table (unique submitter_ids)
-  const currentRoundStmts = G.statements.filter(s => s.round === G.currentSession.current_round);
-  const uniqueSubmitters  = new Set(currentRoundStmts.map(s => s.submitter_id)).size;
-  const total             = participants.length;
-  const pct               = total > 0 ? Math.round(uniqueSubmitters / total * 100) : 0;
-
-  document.getElementById('lobbySubmitPct').textContent    = pct + '%';
-  document.getElementById('lobbySubmitBar').style.width    = pct + '%';
-
-  const startBtn = document.getElementById('startRoundBtn');
-  startBtn.disabled   = pct < 50 && total > 0;
-  startBtn.textContent = `START RESONANCE ROUND${total > 0 ? ' (' + pct + '% ready)' : ''}`;
-
-  const forceBtn = document.querySelector('#view-host-lobby .btn-secondary');
-  if (forceBtn) forceBtn.textContent = `Force Start Submissions (${total} joined)`;
 }
 
 // ─── QR CODE (decorative canvas pattern seeded from session code) ─────────────
@@ -1553,10 +1529,6 @@ async function hostStartRound() {
   } catch(e) {
     toast('Error starting round: ' + e.message, 'error');
   }
-}
-
-async function hostForceStart() {
-  await hostStartRound();
 }
 
 // ─── HOST: SUBMISSION VIEW ────────────────────────────────────────────────────
