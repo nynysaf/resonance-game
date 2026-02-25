@@ -446,6 +446,10 @@ select.form-input option{background:#1a1a2e}
 .export-option-desc{font-size:11px;color:var(--gray);margin-top:2px}
 .export-badge{background:var(--teal);color:white;font-size:9px;letter-spacing:2px;font-weight:700;padding:3px 10px;border-radius:20px;font-family:'Josefin Sans',sans-serif;text-transform:uppercase}
 </style>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+
 </head>
 <body>
 
@@ -663,7 +667,7 @@ select.form-input option{background:#1a1a2e}
           <div class="section-label">Join the Game</div>
           <div class="qr-box" id="qrContainer">
             <!-- QR placeholder SVG -->
-            <canvas id="qrCanvas" width="140" height="140"></canvas>
+            <div id="qrCanvas" width="140" height="140"></canvas>
           </div>
           <div class="join-url-row">
             <div class="join-url" id="joinUrlDisplay">resonance.game/join/——</div>
@@ -1487,28 +1491,15 @@ function updateLobbyParticipantList() {
 function drawQRCode(code) {
   const canvas = document.getElementById('qrCanvas');
   if (!canvas) return;
-  const ctx  = canvas.getContext('2d');
-  const size = 140, cells = 21, cell = size / cells;
-  ctx.fillStyle = '#ffffff';
-  ctx.fillRect(0, 0, size, size);
-  ctx.fillStyle = '#1A1A2E';
-  function finder(x, y) {
-    ctx.fillRect(x * cell, y * cell, 7 * cell, 7 * cell);
-    ctx.fillStyle = '#fff';
-    ctx.fillRect((x + 1) * cell, (y + 1) * cell, 5 * cell, 5 * cell);
-    ctx.fillStyle = '#1A1A2E';
-    ctx.fillRect((x + 2) * cell, (y + 2) * cell, 3 * cell, 3 * cell);
-  }
-  finder(0, 0); finder(14, 0); finder(0, 14);
-  let seed = 0;
-  for (const c of code) seed = (seed * 31 + c.charCodeAt(0)) >>> 0;
-  function rand() { seed = (seed * 1664525 + 1013904223) >>> 0; return (seed >>> 0) / 0xFFFFFFFF; }
-  for (let r = 0; r < cells; r++) {
-    for (let c = 0; c < cells; c++) {
-      if ((r < 9 && c < 9) || (r < 9 && c > 11) || (r > 11 && c < 9)) continue;
-      if (rand() > 0.55) ctx.fillRect(c * cell, r * cell, cell, cell);
-    }
-  }
+  canvas.innerHTML = '';
+  const url = window.location.origin + '?join=' + code;
+  new QRCode(canvas, {
+    text: url,
+    width: 140,
+    height: 140,
+    colorDark: '#1A1A2E',
+    colorLight: '#ffffff',
+  });
 }
 
 // ─── HOST: START ROUND ────────────────────────────────────────────────────────
@@ -2438,9 +2429,45 @@ function downloadCSV(rows, filename) {
 
 function exportPDF() {
   closeModal('modalExport');
-  toast('PDF export: add jsPDF to your deployment (see deployment guide Section 07)', 'error', 5000);
-}
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF();
+  const s = G.currentSession;
 
+  doc.setFontSize(22);
+  doc.setTextColor('#0D7377');
+  doc.text('THE RESONANCE GAME', 14, 20);
+
+  doc.setFontSize(12);
+  doc.setTextColor('#333333');
+  doc.text('Session: ' + s.title, 14, 30);
+  doc.text('Code: ' + s.code + '  ·  Round ' + s.current_round, 14, 37);
+
+  const scored = G.statements.map(stmt => {
+    const vals = G.votes.filter(v => v.statement_id === stmt.id).map(v => v.value);
+    const avg = vals.length > 0 ? (vals.reduce((a,b) => a+b,0)/vals.length).toFixed(2) : '—';
+    return [stmt.text.replace(/"/g,''), stmt.submitter_name || '', avg, vals.length];
+  }).sort((a,b) => b[2] - a[2]);
+
+  doc.setFontSize(14);
+  doc.text('Resonance Rankings', 14, 50);
+
+  let y = 56;
+  scored.forEach((row, i) => {
+    doc.setFontSize(10);
+    doc.setTextColor('#333');
+    const text = doc.splitTextToSize((i+1) + '. ' + row[0], 130);
+    doc.text(text, 14, y);
+    doc.setTextColor('#0D7377');
+    doc.text('Score: ' + row[2] + '  Votes: ' + row[3], 155, y);
+    doc.setTextColor('#888');
+    doc.text(row[1], 155, y + 5);
+    y += text.length * 6 + 8;
+    if (y > 270) { doc.addPage(); y = 20; }
+  });
+
+  doc.save('resonance-' + s.code + '.pdf');
+  toast('PDF downloaded', 'success');
+}
 // ─── TIMER SYSTEM ─────────────────────────────────────────────────────────────
 function startCountdown(seconds, elementId, onExpire) {
   clearTimers();
